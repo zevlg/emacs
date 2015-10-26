@@ -2772,8 +2772,10 @@ If it is equal to 'command, then the last boundary was inserted
 automatically after a command, that is by the code defined in
 this section.
 
-If it is equal to a number, then the last boundary was inserted
-by an amalgamating command.")
+If it is equal to a list, then the last boundary was inserted by
+an amalgamating command. The car of the list is the number of
+times a amalgamating command has been called, and the cdr are the
+buffers that were changed during the last command.")
 
 (defvar undo-auto-current-boundary-timer nil
   "Current timer which will run `undo-auto-boundary-timer' or nil.
@@ -2794,8 +2796,7 @@ This variable is set to nil by the command loop and is set by
 Amalgamating commands are either `self-insert-command' and
 `delete-char'.  The return value is actual number of times one of
 these commands have been run if non-nil."
-  (and (integerp undo-last-boundary)
-       undo-last-boundary))
+  (car-safe undo-last-boundary))
 
 (defun undo--ensure-boundary (reason)
   "Add an `undo-boundary' to the current buffer if needed.
@@ -2808,11 +2809,13 @@ REASON describes the reason that the boundary is being added; see
            (undo--last-boundary-amalgamating-p)))
       (when (and last-amalgamating
                  (eq 'amalgamate reason))
-        (setq reason (1+ last-amalgamating)))
+        (setq reason
+              (cons (1+ last-amalgamating)
+                    undo--undoably-changed-buffers)))
       (undo-boundary)
       (setq undo-last-boundary
             (if (eq 'amalgamate reason)
-                0
+                (cons 0 undo--undoably-changed-buffers)
               reason)))
     t))
 
@@ -2835,7 +2838,7 @@ REASON describes the reason that the boundary is being added; see
   "Ensure that the `undo-auto-boundary-timer' is set."
   (unless undo-auto-current-boundary-timer
     (setq undo-auto-current-boundary-timer
-          (run-at-time 10 nil 'undo-auto-boundary-timer))))
+          (run-at-time 10 nil 'undo--auto-boundary-timer))))
 
 (defvar undo--undoably-changed-buffers nil
   "List of buffers that have changed recently.
@@ -2868,15 +2871,25 @@ calls have been made."
           (and
            (< last-amalgamating-count 20)
            (eq this-command last-command))
-          (setq buffer-undo-list
-                (cdr buffer-undo-list))
+          ;; amalgamate all buffers that have changed
+          (dolist (b (cdr undo-last-boundary))
+            (when (buffer-live-p b)
+              (with-current-buffer
+                  b
+                (when
+                    ;; The head of `buffer-undo-list' is nil.
+                    ;; `car-safe' doesn't work because
+                    ;; `buffer-undo-list' need not be a list!
+                    (and (listp buffer-undo-list)
+                         (not (car buffer-undo-list)))
+                  (setq buffer-undo-list
+                        (cdr buffer-undo-list))))))
         (setq undo-last-boundary 0)))))
 
 (defun undo--undoable-change ()
   "Called after every undoable buffer change."
   (add-to-list 'undo--undoably-changed-buffers (current-buffer))
   (undo--auto-boundary-ensure-timer))
-
 ;; End auto-boundary section
 
 (defcustom undo-ask-before-discard nil
