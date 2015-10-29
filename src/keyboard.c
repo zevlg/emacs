@@ -1344,6 +1344,10 @@ command_loop_1 (void)
       while (pending_malloc_warning)
 	display_malloc_warning ();
 
+      /* Ensure that we have added appropriate undo-boundaries as a
+         result of changes from the last command. */
+      call0 (Qundo__auto_add_boundary);
+
       Vdeactivate_mark = Qnil;
 
       /* Don't ignore mouse movements for more than a single command
@@ -1519,8 +1523,6 @@ command_loop_1 (void)
       kset_last_prefix_arg (current_kboard, Vcurrent_prefix_arg);
 
       safe_run_hooks (Qpost_command_hook);
-
-      call0 (Qundo__auto_add_boundary);
 
       /* If displaying a message, resize the echo area window to fit
 	 that message's size exactly.  */
