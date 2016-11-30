@@ -8545,6 +8545,17 @@ imagemagick_load_image (struct frame *f, struct image *img,
     status = MagickReadImage (image_wand, filename);
   else
     {
+      int width, height;
+      value = image_spec_value (img->spec, QCwidth, NULL);
+      width = NATNUMP(value) ? XFASTINT(value) : -1;
+      value = image_spec_value (img->spec, QCheight, NULL);
+      height = NATNUMP(value) ? XFASTINT(value) : -1;
+      if (width > 0 && height > 0)
+        {
+          MagickSetSize(image_wand, width, height);
+          MagickSetDepth(image_wand, 8);
+        }
+
       filename_hint = imagemagick_filename_hint (img->spec, hint_buffer);
       MagickSetFilename (image_wand, filename_hint);
       status = MagickReadImageBlob (image_wand, contents, size);
