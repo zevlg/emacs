@@ -536,6 +536,8 @@ static void x_laplace (struct frame *, struct image *);
 static void x_emboss (struct frame *, struct image *);
 static void x_build_heuristic_mask (struct frame *, struct image *,
                                     Lisp_Object);
+static void x_copy_image_mask (struct frame *, struct image *,
+                               Lisp_Object);
 #ifdef WINDOWSNT
 #define CACHE_IMAGE_TYPE(type, status) \
   do { Vlibrary_cache = Fcons (Fcons (type, status), Vlibrary_cache); } while (0)
@@ -1671,6 +1673,8 @@ postprocess_image (struct frame *f, struct image *img)
 	 `:mask (heuristic (R G B))'
 	 means build a mask from color (R G B) in the
 	 image.
+	 `:mask image-spec'
+	 means use mask from another image, their sizes
 	 `:mask nil'
 	 means remove a mask, if any.  */
 
@@ -1692,6 +1696,10 @@ postprocess_image (struct frame *f, struct image *img)
 		x_build_heuristic_mask (f, img, XCAR (XCDR (mask)));
 	      else
 		x_build_heuristic_mask (f, img, XCDR (mask));
+	    }
+	  else if (valid_image_p (mask))
+	    {
+	      x_copy_image_mask (f, img, mask);
 	    }
 	  else if (NILP (mask) && found_p && img->mask)
 	    x_clear_image_1 (f, img, CLEAR_IMAGE_MASK);
@@ -5156,6 +5164,60 @@ x_build_heuristic_mask (struct frame *f, struct image *img, Lisp_Object how)
 #endif /* HAVE_NTGUI */
 
   image_unget_x_image_or_dc (img, 0, ximg, prev);
+}
+
+/* Copy mask from image specified by MASK_SPEC.
+
+   Image specified by MASK_SPEC should have mask, and both
+   images should match in size */
+
+static void
+x_copy_image_mask (struct frame *f, struct image *img, Lisp_Object mask_spec)
+{
+  ptrdiff_t mask_id;
+  struct image *mask;
+  int x, y;
+  XImagePtr mask_ximg;
+  XImagePtr src_mask_ximg;
+
+  eassert (valid_image_p (mask_spec));
+  mask_id = lookup_image (f, mask_spec);
+  mask = IMAGE_FROM_ID (f, mask_id);
+
+  if (! mask->mask)
+    {
+      image_error (":mask spec should be masked image `%s'", mask->spec);
+      return;
+    }
+
+  if (img->width != mask->width || img->height != mask->height)
+    {
+      image_error ("Image `%s' and its :mask `%s' does not match in size",
+		   img->spec, mask->spec);
+      return;
+    }
+
+  if (img->mask)
+    x_clear_image_1 (f, img, CLEAR_IMAGE_MASK);
+
+  /* Create an image and pixmap serving as mask.  */
+  if (! image_create_x_image_and_pixmap (f, img, img->width, img->height, 1,
+					 &mask_ximg, 1))
+    return;
+
+  src_mask_ximg = image_get_x_image (f, mask, 1);
+
+  for (y = 0; y < img->height; ++y)
+    for (x = 0; x < img->width; ++x)
+      XPutPixel (mask_ximg, x, y, XGetPixel (src_mask_ximg, x, y));
+
+  image_unget_x_image (mask, 1, src_mask_ximg);
+
+  /* Fill in the background_transparent field while we have the mask handy. */
+  image_background_transparent (img, f, mask_ximg);
+
+  /* Finally put mask_ximg into the image.  */
+  image_put_x_image (f, img, mask_ximg, 1);
 }
 
 
