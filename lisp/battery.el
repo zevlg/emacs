@@ -23,10 +23,11 @@
 ;;; Commentary:
 
 ;; There is at present support for GNU/Linux, macOS and Windows.  This
-;; library supports both the `/proc/apm' file format of Linux version
-;; 1.3.58 or newer and the `/proc/acpi/' directory structure of Linux
-;; 2.4.20 and 2.6.  Darwin (macOS) is supported by using the `pmset'
-;; program.  Windows is supported by the GetSystemPowerStatus API call.
+;; library supports UPower (https://upower.freedesktop.org) via D-Bus
+;; API or the `/proc/apm' file format of Linux version 1.3.58 or newer
+;; and the `/proc/acpi/' directory structure of Linux 2.4.20 and 2.6.
+;; Darwin (macOS) is supported by using the `pmset' program.  Windows
+;; is supported by the GetSystemPowerStatus API call.
 
 ;;; Code:
 
@@ -45,14 +46,18 @@
   :type 'regexp
   :group 'battery)
 
-(defcustom battery-upower-device "battery_BAT1"
+(defcustom battery-upower-device "DisplayDevice"
   "Upower battery device name."
   :version "26.1"
   :type 'string
   :group 'battery)
 
+(declare-function dbus-list-known-names "dbus.el" (bus))
+
 (defcustom battery-status-function
-  (cond ((and (eq system-type 'gnu/linux)
+  (cond ((member "org.freedesktop.UPower" (dbus-list-known-names :system))
+         #'battery-upower)
+        ((and (eq system-type 'gnu/linux)
 	      (file-readable-p "/proc/apm"))
 	 #'battery-linux-proc-apm)
 	((and (eq system-type 'gnu/linux)
@@ -547,7 +552,7 @@ The following %-sequences are provided:
    :system
    "org.freedesktop.UPower"
    (concat "/org/freedesktop/UPower/devices/" (or device battery-upower-device))
-   "org.freedesktop.UPower"
+   "org.freedesktop.UPower.Device"
    pname))
 
 (defun battery-upower ()
